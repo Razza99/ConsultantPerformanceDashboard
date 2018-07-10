@@ -1,8 +1,8 @@
-# ConsultantPerformanceDashboard
+# Consultant Performance Dashboard
 
 An interactive dashboard tracking consultant performance, demonstrated with randomised data
 
-View the video demonstration in DashboardDemo.mp4 for a quick summary
+[![Dashboard Demo](https://github.com/Razza99/ConsultantPerformanceDashboard/blob/master/DashboardDemo.gif)](https://youtu.be/iDEhJCuGe6c)
 
 Running the .py file will read from the randomised data in the .xlsx file, and run a web app on http://127.0.0.1:8050/
 
