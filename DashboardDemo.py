@@ -4,6 +4,7 @@ import dash_auth
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output    # State
+import plotly.graph_objs as go
 import cufflinks as cf
 
 import numpy as np
@@ -51,10 +52,18 @@ def margin_divide(df):
         else 100 * df['Commission'] / df['Gross sales']
 
 
+def financial_year(date):
+    if date.month >= 7:
+        return f'{date.year}.{date.year+1}'
+    else:
+        return f'{date.year-1}.{date.year}'
+
+
 df['Service fee'] = df.apply(service_fee_calc, axis=1)
 df['Commission paid'] = df['Commission'] - df['Service fee']
 df['Month_label'] = df['Month'].apply(lambda x: datetime.strftime(x, "%b %Y"))
 df['Margin'] = df[['Commission', 'Gross sales']].apply(margin_divide, axis=1)
+df['Financial_year'] = df['Month'].apply(financial_year)
 
 
 # Rounding values for ease of reading.
@@ -73,22 +82,32 @@ months = list(df['Month_label'].unique())  # month labels
 months_dt = list(df['Month'].unique())  # month datetimes
 num_of_months = len(months)
 years = df['Month'].apply(lambda x: datetime.strftime(x, "%Y")).unique()
+fin_years = df['Financial_year'].unique()
 consultants = np.sort(df['Consultant'].unique())
 top5_selected = None  # global variable needed later
+max_prev_years = 5  # for graph 7, comparing previous years for consultant
 
 # for ease of altering if necessary
 cols_to_graph_1 = ['Gross sales', 'Commission', 'Service fee']
 cols_to_graph_4 = ['Gross sales', 'Commission', 'Service fee']
 cols_to_graph_5 = ['Service fee', 'Commission paid', 'Cost of sales']
 cols_to_graph_6 = ['Gross sales', 'Commission', 'Service fee']
+cols_to_graph_7 = ['Gross sales', 'Commission', 'Service fee']
 
 in_date_overall_margin = round(
     100 * df['Commission'].sum() / df['Gross sales'].sum(), 1)
 
+colour_list = [
+ 'rgb(215,25,28)',
+ 'rgb(253,174,97)',
+ 'rgb(255,255,50)',
+ 'rgb(171,217,233)',
+ 'rgb(44,123,182)'
+ ]
 
 # Reshape the data.
 # Columns=['Month', 'Consultant', 'Gross sales', 'Cost of sales', 'Commission',
-# 'Margin', 'Service fee', 'Commission paid', 'Month_label']
+# 'Margin', 'Service fee', 'Commission paid', 'Month_label', 'Financial_year']
 cols_of_interest = df.columns[2:]
 df_reshaped = df.pivot_table(
     index='Month', columns='Consultant', values=cols_of_interest)
@@ -149,20 +168,6 @@ gr2_margin = dcc.Graph(
 )
 
 
-# 3 Pie chart - Sales/Commission/Service Fee breakdown by month
-
-pie_df = df_reshaped['Gross sales'].transpose().reset_index()
-pie_df.columns = ['Consultant'] + months
-fig3 = pie_df.iplot(kind='pie', labels='Consultant', values=months[-1],
-                    title='Gross sales - ' + months[-1], asFigure=True)
-
-gr3_pie = dcc.Graph(
-    id='gr3',
-    figure=fig3,
-    style={'height': '87vh'}
-)
-
-
 # 4 Line graph history for individual
 df_latest_month = df_in_date[df_in_date.Month == months_dt[-1]]
 month_leader = (df_latest_month   # initially show the month leader
@@ -175,28 +180,11 @@ fig4 = (df_in_date[df_in_date['Consultant'] == month_leader]
 gr4_bar = dcc.Graph(
     id='gr4',
     figure=fig4,
-    style={'height': '85vh'}
+    style={'height': '87vh'}
 )
 
 
-# 5 Stacked bar graph/line graph - YTD vs consultant
-current_year = datetime.today().year
-start_of_year = datetime(current_year, 1, 1)
-
-fig5 = (df[df.Month >= start_of_year]
-        .pivot_table(index='Consultant', values=cols_to_graph_5, aggfunc=sum)
-        .sort_values(by='Service fee', ascending=False)
-        .iplot(kind='bar', barmode='stack',
-               title=f'{current_year} YTD Sales/Commission',
-               keys=cols_to_graph_5, asFigure=True)
-        )
-
-gr5_bar_ytd = dcc.Graph(
-    id='gr5',
-    figure=fig5,
-    style={'height': '88vh'}
-)
-
+# Logo
 demo_logo = 'DemoLogo.JPG'
 encoded_logo = base64.b64encode(open(demo_logo, 'rb').read())
 
@@ -277,7 +265,7 @@ app.layout = html.Div([
             )], style={'float': 'left', 'marginLeft': '5', 'marginTop': '5'})
     ], ),
     html.Div([
-        gr3_pie
+        dcc.Graph(id='gr3', style={'height': '87vh'})
     ], style={'width': '50%', 'marginTop': '10',
               'clear': 'both', 'float': 'left'}),
 
@@ -296,21 +284,38 @@ app.layout = html.Div([
             )],
             style={'width': '200'}),
         html.Div([
-            gr5_bar_ytd
+            dcc.Graph(id='gr5', style={'height': '88vh'})
         ], style={'width': '100%', 'marginTop': '10'})
     ]),
     html.Hr(),
-
+    html.H3(['Consultant history by Financial Year']),
+    html.Div([
+        dcc.Dropdown(
+            id='gr7_name_select',
+            options=[{'label': i, 'value': i} for i in consultants],
+            value=month_leader,
+            clearable=False
+        )], style={'width': '200', 'float': 'left'}),
+    html.Div([
+            dcc.RadioItems(
+                id='gr7_y_select',
+                options=[{'label': i, 'value': i}
+                         for i in cols_to_graph_7],
+                value=cols_to_graph_7[0],
+            )], style={'float': 'left', 'marginTop': '5'}),
+    html.Div([
+        dcc.Graph(id='gr7', style={'height': '88vh'})
+    ], style={'clear': 'both', 'width': '100%', 'marginTop': '10'}),
+    html.Hr(),
     html.Div([
         html.Img(src='data:image/jpg;base64,{}'.format(encoded_logo.decode()))
     ], style={'textAlign': 'center'})
-
-    # For investigating and displaying hoverdata
-    # html.Div([
-    #     html.Pre(id='hover-data', style={'paddingTop':35})
-    # ], style={'width':'30%'}),
-
 ])
+
+# For investigating and displaying hoverdata
+# html.Div([
+#     html.Pre(id='hover-data', style={'paddingTop':35})
+# ], style={'width':'30%'}),
 
 app.title = 'Dashboard Demo'
 
@@ -365,6 +370,7 @@ def update_graph1(y_select, hoverData, top5, name, months_selected, ):  # fig1
             fig1 = df_in_date_reshaped[y_select].iplot(
                 title=y_select, asFigure=True)
         fig1['layout'].update({'hovermode': 'closest'})
+
     # Alternate method of controlling x axis
     # Top5 calculations wouldn't be updated
     #
@@ -524,6 +530,29 @@ def update_graph5(year_selected):
                 )
     return fig5
 
+
+# Select consultand and metric for gr7
+@app.callback(
+    Output('gr7', 'figure'),
+    [Input('gr7_name_select', 'value'),
+     Input('gr7_y_select', 'value')])
+def update_graph7(name, metric):
+    traces = []
+    filter1 = df['Consultant'] == name
+    for i, fyr in enumerate(fin_years[:-max_prev_years-1:-1]):  # include up to the last 5 years
+        filter2 = df['Financial_year'] == fyr
+        trace = go.Scatter(x=df[filter1 & filter2]['Month'].dt.strftime('%b'),
+                           y=df[filter1 & filter2][metric],
+                           name=fyr,
+                           line=dict(
+                                color=colour_list[i],
+                                width=2+2/(i+1),
+                                    )
+                           )
+        traces.append(trace)
+    layout = go.Layout(title=f'{name} - {metric} comparison by Financial Year')
+    fig7 = dict(data=traces, layout=layout)
+    return fig7
 
 # For testing format of hoverdata
 # @app.callback(
